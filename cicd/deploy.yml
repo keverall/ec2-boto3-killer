@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to deploy a Lambda function to stop long-running EC2 instances and send SNS notifications.
+
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument: 
+        Version: '2012-10-17'
+        Statement: 
+          - Effect: Allow
+            Principal: 
+              Service: 
+                - lambda.amazonaws.com
+            Action: 
+              - sts:AssumeRole
+      Policies: 
+        - PolicyName: LambdaExecutionPolicy
+          PolicyDocument: 
+            Version: '2012-10-17'
+            Statement: 
+              - Effect: Allow
+                Action: 
+                  - ec2:DescribeInstances
+                  - ec2:StopInstances
+                  - sns:Publish
+                  - sts:GetCallerIdentity
+                  - organizations:DescribeAccount
+                Resource: "*"
+
+  StopLongRunningEC2InstancesFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: sc-ec2-auto-cost-saver.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: your-s3-bucket-name  # Replace with your actual S3 bucket name
+        S3Key: your-s3-key  # Replace with your actual S3 key
+      Runtime: python3.8
+      Timeout: 300
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: arn:aws:sns:region:account-id:topic-name  # Replace with your actual SNS topic ARN
+
+Outputs:
+  LambdaFunctionArn:
+    Description: "ARN of the Lambda function"
+    Value: !GetAtt StopLongRunningEC2InstancesFunction.Arn

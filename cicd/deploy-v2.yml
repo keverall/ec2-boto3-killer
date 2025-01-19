@@ -1,0 +1,68 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to deploy a Lambda function and an EventBridge rule to trigger it twice a day.
+
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument: 
+        Version: '2012-10-17'
+        Statement: 
+          - Effect: Allow
+            Principal: 
+              Service: 
+                - lambda.amazonaws.com
+            Action: 
+              - sts:AssumeRole
+      Policies: 
+        - PolicyName: LambdaExecutionPolicy
+          PolicyDocument: 
+            Version: '2012-10-17'
+            Statement: 
+              - Effect: Allow
+                Action: 
+                  - ec2:DescribeInstances
+                  - ec2:StopInstances
+                  - sns:Publish
+                  - sts:GetCallerIdentity
+                  - organizations:DescribeAccount
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  StopLongRunningEC2InstancesFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: sc_ec2_auto_cost_saver.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: your-s3-bucket-name  # Replace with your actual S3 bucket name
+        S3Key: your-s3-key  # Replace with your actual S3 key
+      Runtime: python3.8
+      Timeout: 300
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: arn:aws:sns:region:account-id:topic-name  # Replace with your actual SNS topic ARN
+
+  EventBridgeRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: 'cron(30 5,14 * * ? *)'  # 11 AM IST and 8 PM IST
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt StopLongRunningEC2InstancesFunction.Arn
+          Id: StopLongRunningEC2InstancesFunctionTarget
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref StopLongRunningEC2InstancesFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EventBridgeRule.Arn
+
+Outputs:
+  LambdaFunctionArn:
+    Description: "ARN of the Lambda function"
+    Value: !GetAtt StopLongRunningEC2InstancesFunction.Arn
