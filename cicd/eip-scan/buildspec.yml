@@ -1,0 +1,17 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.8
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Lambda function package
+      - pip install -r src/requirements.txt -t src/
+      - zip -r9 /tmp/de-allocated-eip-scan-remover.zip src/
+      - echo Build completed on `date`
+artifacts:
+  files:
+    - '**/*'
+  base-directory: /tmp

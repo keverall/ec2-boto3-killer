@@ -1,0 +1,146 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  GitHubRepository:
+    Type: String
+    Description: 'The GitHub repository containing the code'
+  GitHubBranch:
+    Type: String
+    Description: 'The branch of the GitHub repository to use'
+  GitHubToken:
+    Type: String
+    Description: 'The GitHub token for accessing the repository'
+  LambdaExecutionRoleArn:
+    Type: String
+    Description: 'The ARN of the Lambda execution role'
+
+Resources:
+  PipelineRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service: 'codepipeline.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'CodePipelinePolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 's3:*'
+                  - 'codebuild:*'
+                  - 'cloudformation:*'
+                  - 'iam:PassRole'
+                Resource: '*'
+
+  CodePipeline:
+    Type: 'AWS::CodePipeline::Pipeline'
+    Properties:
+      RoleArn: !GetAtt PipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Sub '${AWS::AccountId}-codepipeline-artifacts'
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Provider: GitHub
+                Version: 1
+              OutputArtifacts:
+                - Name: SourceOutput
+              Configuration:
+                Owner: !Sub '${AWS::AccountId}'
+                Repo: !Ref GitHubRepository
+                Branch: !Ref GitHubBranch
+                OAuthToken: !Ref GitHubToken
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              RunOrder: 1
+        - Name: Deploy
+          Actions:
+            - Name: Deploy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: 1
+              InputArtifacts:
+                - Name: BuildOutput
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                StackName: EIPScanStack
+                Capabilities: CAPABILITY_NAMED_IAM
+                TemplatePath: BuildOutput::cicd/eip-scan/lambda-deployment-eip.yml
+              RunOrder: 1
+
+  CodeBuildProject:
+    Type: 'AWS::CodeBuild::Project'
+    Properties:
+      Name: EIPScanBuild
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Sub |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                python: 3.8
+            build:
+              commands:
+                - echo Build started on `date`
+                - echo Building the Lambda function package
+                - pip install -r src/requirements.txt -t src/
+                - zip -r9 /tmp/de-allocated-eip-scan-remover.zip src/
+                - echo Build completed on `date`
+          artifacts:
+            files:
+              - '**/*'
+            base-directory: /tmp
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:4.0
+        Type: LINUX_CONTAINER
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+
+  CodeBuildServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service: 'codebuild.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'CodeBuildPolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 's3:*'
+                  - 'logs:*'
+                  - 'cloudformation:*'
+                  - 'lambda:*'
+                Resource: '*'
