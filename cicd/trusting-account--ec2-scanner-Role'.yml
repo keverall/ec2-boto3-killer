@@ -1,0 +1,36 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  CentralAccountId:
+    Type: String
+    Description: 'The AWS Account ID of the central account'
+  LambdaExecutionRoleArn:
+    Type: String
+    Description: 'The ARN of the Lambda execution role in the central account'
+
+Resources:
+  CrossAccountRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: 'CrossAccountRole'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${CentralAccountId}:role/LambdaExecutionRole'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'CrossAccountPolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 'ec2:DescribeInstances'
+                  - 'ec2:StopInstances'
+                Resource: '*'
+Outputs:
+  CrossAccountRoleArn:
+    Value: !GetAtt CrossAccountRole.Arn
+    Export:
+      Name: 'CrossAccountRoleArn'
