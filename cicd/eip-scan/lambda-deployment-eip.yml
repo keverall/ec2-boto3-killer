@@ -1,0 +1,21 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  LambdaExecutionRoleArn:
+    Type: String
+    Description: 'The ARN of the Lambda execution role'
+
+Resources:
+  DeAllocatedEIPScanRemoverFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: 'DeAllocatedEIPScanRemover'
+      Handler: 'de-allocated-eip-scan-remover.lambda_handler'
+      Role: !Ref LambdaExecutionRoleArn
+      Code:
+        S3Bucket: 'your-s3-bucket'
+        S3Key: 'path/to/your/lambda/code.zip'
+      Runtime: 'python3.8'
+      Timeout: 300
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: 'arn:aws:sns:region:account-id:topic-name'
