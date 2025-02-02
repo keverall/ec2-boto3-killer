@@ -4,12 +4,20 @@ phases:
   install:
     runtime-versions:
       python: 3.8
+    commands:
+      - pip install awscli jq
   build:
     commands:
       - echo Build started on `date`
       - echo Building the Lambda function package
       - pip install -r src/requirements.txt -t src/
       - zip -r9 /tmp/de-allocated-eip-scan-remover.zip src/
+      - aws s3 cp s3://$CODEPIPELINE_ARTIFACT_BUCKET/$CODEPIPELINE_ARTIFACT_KEY . --recursive
+      - echo Deploying to all target trusting accounts this lambda will run agains't
+      - for account in $(cat accounts.json | jq -r '.accounts[]'); do
+          aws cloudformation deploy --template-file Central-Account-Lambda-Execution-Role.yml --stack-name CentralAccountLambdaExecutionRole --capabilities CAPABILITY_NAMED_IAM --parameter-overrides AccountId=$account;
+          echo "Deployed to account $account";
+        done
       - echo Build completed on `date`
 artifacts:
   files:

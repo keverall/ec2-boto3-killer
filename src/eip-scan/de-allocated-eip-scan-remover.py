@@ -1,4 +1,5 @@
 import boto3
+import json
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError, ClientError
 from datetime import datetime
 
@@ -15,14 +16,20 @@ def assume_role(account_id, role_name):
         return None
 
 def lambda_handler(event, context):
+    
     central_account_id = 'central_account_id'
     role_name = 'CrossAccountRole'
-    target_accounts = ['account_id_1', 'account_id_2']
+    
+    # Read target accounts from JSON file
+    with open('../../cicd/ec2-scan/accounts.json') as f:
+        target_accounts = json.load(f)['accounts']
+        
     sns_topic_arn = 'arn:aws:sns:region:account-id:topic-name'
     sns_client = boto3.client('sns')
 
-    for account_id in target_accounts:
-        credentials = assume_role(account_id, role_name)
+
+    for target_account_id in target_accounts:
+        credentials = assume_role(target_account_id, role_name)
         if not credentials:
             continue
 
@@ -54,13 +61,13 @@ def lambda_handler(event, context):
 
             # Send SNS message with details of removed EIPs
             if removed_eips_details:
-                message = f"Removed EIPs in account {account_id}:\n"
+                message = f"Removed EIPs in account {target_account_id}:\n"
                 for eip in removed_eips_details:
                     message += f"PublicIp: {eip['PublicIp']}, InstanceId: {eip['InstanceId']}, Tags: {eip['Tags']}\n"
                 sns_client.publish(
                     TopicArn=sns_topic_arn,
-                    Subject=f"EIP Cleanup Report for Account {account_id}",
+                    Subject=f"EIP Cleanup Report for Account {target_account_id}",
                     Message=message
                 )
         except ClientError as e:
-            print(f"Error processing account {account_id}: {e}")
+            print(f"Error processing account {target_account_id}: {e}")
